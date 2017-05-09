@@ -231,6 +231,7 @@ def get_options():
     if 'tasks' not in options:
         options['tasks'] = {'main' : {'type' : 'OBJECTIVE', 'likelihood' : options.get('likelihood', 'GAUSSIAN')}}
 
+    options['iterations'] = options.get('iterations', 0)
     # Set DB address
     db_address = parse_db_address(options)
     if 'database' not in options:
@@ -260,7 +261,10 @@ def main():
     sys.stderr.write('Using database at %s.\n' % db_address)        
     db         = MongoDB(database_address=db_address)
     
-    while True:
+    iterations = 0
+
+    while options['iterations'] == 0 or iterations < options['iterations']:
+        iterations += 1
 
         for resource_name, resource in resources.iteritems():
 
@@ -307,6 +311,21 @@ def main():
         # (they might be accepting if suggest takes a while and so some jobs already finished by the time this point is reached)
         if tired(db, experiment_name, resources):
             time.sleep(options.get('polling-time', 5))
+    
+    # Wait for jobs to finish
+    while not finished(db, experiment_name, resources):
+        time.sleep(options.get('polling-time', 5))
+    sys.stderr.write('Finished.\n')
+
+def finished(db, experiment_name, resources):
+    """
+    return True if all resources are accepting jobs
+    """
+    jobs = load_jobs(db, experiment_name)
+    for resource_name, resource in resources.iteritems():
+        if not resource.acceptingJobs(jobs):
+            return False
+    return True
 
 def tired(db, experiment_name, resources):
     """
